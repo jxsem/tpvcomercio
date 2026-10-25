@@ -1,0 +1,12 @@
+[tool.ruff]
+target-version = "py314"
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle: errores
+    "W",  # pycodestyle: avisos
+    "F",  # pyflakes: imports sin usar, nombres sin definir...
+    "I",  # isort: ordenar imports
+    "B",  # bugbear: patrones propensos a bugs
+    "UP",  # pyupgrade: sintaxis moderna de Python
+]

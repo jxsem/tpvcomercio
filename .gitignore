@@ -1,0 +1,46 @@
+# macOS
+.DS_Store
+
+# IA
+CLAUDE.md
+
+# Python: bytecode y compilados
+__pycache__/
+*.py[codz]
+*$py.class
+*.so
+
+# Entornos virtuales
+.venv/
+venv/
+env/
+
+# Variables de entorno (secretos). El .env.example SÍ se versiona
+.env
+.env.*
+!.env.example
+
+# Empaquetado
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# Tests y cobertura
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.hypothesis/
+
+# Herramientas
+.ruff_cache/
+.mypy_cache/
+
+# Backups de base de datos (contienen datos reales del negocio)
+backups/
+*.dump
+*.sql
+
+# Editor
+tempCodeRunnerFile.py
