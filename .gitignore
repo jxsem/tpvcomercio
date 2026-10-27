@@ -5,7 +5,7 @@
 CLAUDE.md
 
 # Python: bytecode y compilados
-__pycache__/
+__pycache__
 *.py[codz]
 *$py.class
 *.so
