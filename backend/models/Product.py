@@ -1,0 +1,33 @@
+from datetime import datetime
+from decimal import Decimal
+
+from sqlalchemy import CheckConstraint, DateTime, Numeric, String, func
+from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.sql.expression import true
+
+from backend.database.base import Base
+
+
+class Product(Base):
+    __tablename__ = "products"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(50))
+    category_id: Mapped[int] = mapped_column()
+    price: Mapped[Decimal] = mapped_column(Numeric(precision=10, scale=2))
+    tax_rate: Mapped[Decimal] = mapped_column(Numeric(precision=4, scale=2))
+    stock: Mapped[int | None] = mapped_column()
+    active: Mapped[bool] = mapped_column(server_default=true())
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )
+    updated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), onupdate=func.now()
+    )
+    __table_args__ = (
+        CheckConstraint("price >= 0", name="check_product_price_positive"),
+        CheckConstraint(
+            "tax_rate >= 0 AND tax_rate <= 21", name="check_product_tax_rate_range"
+        ),
+        CheckConstraint("stock >= 0", name="check_product_stock_positive"),
+    )
