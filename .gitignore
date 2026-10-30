@@ -44,3 +44,6 @@ backups/
 
 # Editor
 tempCodeRunnerFile.py
+
+# Cachés de herramientas (ruff, pytest)
+.cache/

@@ -1,5 +1,6 @@
 [tool.ruff]
 target-version = "py314"
+cache-dir = ".cache/ruff"
 
 [tool.ruff.lint]
 select = [
@@ -10,3 +11,8 @@ select = [
     "B",  # bugbear: patrones propensos a bugs
     "UP",  # pyupgrade: sintaxis moderna de Python
 ]
+
+[tool.pytest.ini_options]
+cache_dir = ".cache/pytest"
+testpaths = ["backend/test"]
+pythonpath = ["."]
