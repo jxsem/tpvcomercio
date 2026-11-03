@@ -17,4 +17,4 @@ class Category(Base):
     name: Mapped[str] = mapped_column(String(50), unique=True)
     active: Mapped[bool] = mapped_column(server_default=true())
 
-    products: Mapped[list["Product"]] = relationship(back_populates="category")
+    products: Mapped[list[Product]] = relationship(back_populates="category")

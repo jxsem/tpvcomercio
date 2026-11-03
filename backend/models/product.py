@@ -33,7 +33,7 @@ class Product(Base):
         DateTime(timezone=True), onupdate=func.now()
     )
 
-    category: Mapped["Category"] = relationship(back_populates="products")
+    category: Mapped[Category] = relationship(back_populates="products")
 
     __table_args__ = (
         CheckConstraint("price >= 0", name="check_product_price_positive"),
