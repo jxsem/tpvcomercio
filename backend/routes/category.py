@@ -26,7 +26,7 @@ def create_category(
     # FastAPI responde 422 y esta función no se ejecuta.
     # `db` viene de get_db y se cierra solo al terminar la petición.
 
-    # Annotated[A, B] significa: "el tipo es A, y además lleva esta información extra B".
+    # Annotated[A, B] significa: "el tipo es A, y además lleva esta información extra B"
 
     # Session es el tipo. Sirve a tu editor para autocompletar y detectar errores.
     # Depends(get_db) es la metainformación. FastAPI la lee
