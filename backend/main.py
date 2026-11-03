@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.config import settings
 from backend.routes.category import router as category_router
+from backend.routes.product import router as product_router
 
 app = FastAPI()
 
@@ -14,6 +15,7 @@ app.add_middleware(
 )
 
 app.include_router(category_router)
+app.include_router(product_router)
 
 
 @app.get("/health")
