@@ -20,6 +20,9 @@ class Return(Base):
     user_id: Mapped[int] = mapped_column(
         ForeignKey("users.id", ondelete="RESTRICT"), index=True
     )
+    cash_session_id: Mapped[int | None] = mapped_column(
+        ForeignKey("cash_sessions.id", ondelete="RESTRICT"), index=True
+    )
     # Cómo se devuelve el dinero (afecta al efectivo esperado en caja).
     method: Mapped[str] = mapped_column(String(10))
     total: Mapped[Decimal] = mapped_column(Numeric(precision=10, scale=2))

@@ -30,6 +30,9 @@ class Sale(Base):
     user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id", ondelete="RESTRICT"), index=True
     )
+    cash_session_id: Mapped[int | None] = mapped_column(
+        ForeignKey("cash_sessions.id", ondelete="RESTRICT"), index=True
+    )
     total: Mapped[Decimal] = mapped_column(Numeric(precision=10, scale=2))
     status: Mapped[str] = mapped_column(
         String(20), server_default=SaleStatus.COMPLETED.value

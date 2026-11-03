@@ -1,3 +1,4 @@
+from backend.models.cash_session import CashSession, CashSessionStatus
 from backend.models.category import Category
 from backend.models.payment import Payment, PaymentMethod
 from backend.models.product import Product
@@ -8,6 +9,8 @@ from backend.models.stock_movement import StockMovement, StockMovementType
 from backend.models.user import User, UserRole
 
 __all__ = [
+    "CashSession",
+    "CashSessionStatus",
     "Category",
     "Payment",
     "PaymentMethod",
