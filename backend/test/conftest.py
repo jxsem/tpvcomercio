@@ -9,7 +9,7 @@ from collections.abc import Callable, Iterator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
@@ -144,3 +144,33 @@ def category(client: TestClient) -> dict:
     response = client.post("/categories", json={"name": "Bebidas"})
     assert response.status_code == 201
     return response.json()
+
+
+@pytest.fixture
+def committed_client(engine: Engine) -> Iterator[TestClient]:
+    """Cliente con conexiones y commits reales (sin la transacción de aislamiento).
+
+    Hace falta para probar concurrencia: cada petición usa su propia sesión.
+    Al terminar se vacían las tablas a mano.
+    """
+
+    def override_get_db() -> Iterator[Session]:
+        with Session(engine) as session:
+            yield session
+
+    with Session(engine) as session:
+        admin = User(username="admin", password_hash="no-se-usa", role=UserRole.ADMIN)
+        session.add(admin)
+        session.commit()
+        headers = {"Authorization": f"Bearer {create_access_token(admin.id)}"}
+
+    app.dependency_overrides[get_db] = override_get_db
+    yield TestClient(app, headers=headers)
+    app.dependency_overrides.clear()
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "TRUNCATE sale_items, payments, sales, stock_movements, products,"
+                " categories, users RESTART IDENTITY CASCADE"
+            )
+        )

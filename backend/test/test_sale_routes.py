@@ -1,18 +1,19 @@
-from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from threading import Barrier
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, select, text
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.database.session import get_db
 from backend.main import app
 from backend.models.sale import Sale
 from backend.models.stock_movement import StockMovement, StockMovementType
-from backend.models.user import User, UserRole
-from backend.security import create_access_token
+
+
+# Muchos hilos a la vez: con pocos, la ventana de la carrera es tan pequeña que
+# sin el bloqueo el test a veces pasaba igual.
+WORKERS = 6
 
 
 def create_product(client: TestClient, category: dict, **overrides: object) -> dict:
@@ -372,42 +373,12 @@ def test_list_sales_rejects_invalid_params(client: TestClient, params: dict) -> 
 # --- concurrencia -----------------------------------------------------------
 
 
-@pytest.fixture
-def committed_client(engine: Engine) -> Iterator[TestClient]:
-    """Cliente con conexiones y commits reales (sin la transacción de aislamiento).
-
-    Hace falta para probar concurrencia: cada petición usa su propia sesión.
-    Al terminar se vacían las tablas a mano.
-    """
-
-    def override_get_db() -> Iterator[Session]:
-        with Session(engine) as session:
-            yield session
-
-    with Session(engine) as session:
-        admin = User(username="admin", password_hash="no-se-usa", role=UserRole.ADMIN)
-        session.add(admin)
-        session.commit()
-        headers = {"Authorization": f"Bearer {create_access_token(admin.id)}"}
-
-    app.dependency_overrides[get_db] = override_get_db
-    yield TestClient(app, headers=headers)
-    app.dependency_overrides.clear()
-    with engine.begin() as connection:
-        connection.execute(
-            text(
-                "TRUNCATE sale_items, payments, sales, stock_movements, products,"
-                " categories, users RESTART IDENTITY CASCADE"
-            )
-        )
-
-
 def test_two_simultaneous_sales_cannot_oversell_the_same_stock(
     committed_client: TestClient,
 ) -> None:
     category = committed_client.post("/categories", json={"name": "Bebidas"}).json()
     cola = create_product(committed_client, category)  # stock 10
-    barrier = Barrier(2)
+    barrier = Barrier(WORKERS)
 
     def sell_eight() -> int:
         # Un cliente por hilo; la barrera hace que ambas ventas arranquen a la vez.
@@ -415,10 +386,10 @@ def test_two_simultaneous_sales_cannot_oversell_the_same_stock(
         barrier.wait()
         return client.post("/sales", json=card((cola["id"], 8))).status_code
 
-    with ThreadPoolExecutor(max_workers=2) as pool:
-        results = sorted(pool.map(lambda _: sell_eight(), range(2)))
+    with ThreadPoolExecutor(max_workers=WORKERS) as pool:
+        results = sorted(pool.map(lambda _: sell_eight(), range(WORKERS)))
 
-    # 8 + 8 > 10: exactamente una venta debe entrar y la otra recibir 409.
-    assert results == [201, 409]
+    # 8 + 8 > 10: exactamente una venta debe entrar y las demás recibir 409.
+    assert results == [201] + [409] * (WORKERS - 1)
     assert stock_of(committed_client, cola) == 2
     assert len(committed_client.get("/sales").json()) == 1
