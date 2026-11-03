@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from backend.auth import ADMIN_ONLY, AUTHENTICATED, CurrentUser
 from backend.database.session import get_db
 from backend.models.sale import Sale, SaleStatus
 from backend.schemas.sale_create import SaleCreate
@@ -27,10 +28,10 @@ def load_options():
 
 @router.post("", response_model=SaleRead, status_code=status.HTTP_201_CREATED)
 def create_sale_route(
-    data: SaleCreate, db: Annotated[Session, Depends(get_db)]
+    data: SaleCreate, db: Annotated[Session, Depends(get_db)], user: CurrentUser
 ) -> Sale:
     try:
-        sale = create_sale(db, data)
+        sale = create_sale(db, data, user_id=user.id)
         # Venta, líneas, pago y stock se confirman juntos.
         db.commit()
     except (
@@ -51,7 +52,7 @@ def create_sale_route(
     return sale
 
 
-@router.get("", response_model=list[SaleRead])
+@router.get("", dependencies=[ADMIN_ONLY], response_model=list[SaleRead])
 def list_sales(
     db: Annotated[Session, Depends(get_db)],
     sale_status: Annotated[SaleStatus | None, Query(alias="status")] = None,
@@ -68,7 +69,7 @@ def list_sales(
     return list(db.scalars(stmt.limit(limit).offset(offset)))
 
 
-@router.get("/{sale_id}", response_model=SaleRead)
+@router.get("/{sale_id}", dependencies=[AUTHENTICATED], response_model=SaleRead)
 def get_sale(sale_id: int, db: Annotated[Session, Depends(get_db)]) -> Sale:
     sale = db.scalar(select(Sale).options(*load_options()).where(Sale.id == sale_id))
     if sale is None:
