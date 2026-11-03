@@ -5,6 +5,7 @@ from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
+from backend.auth import ADMIN_ONLY, AUTHENTICATED
 from backend.database.errors import unique_violation_constraint
 from backend.database.session import get_db
 from backend.models.category import Category
@@ -53,7 +54,12 @@ def escape_like(text: str) -> str:
     return text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-@router.post("", response_model=ProductRead, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "",
+    dependencies=[ADMIN_ONLY],
+    response_model=ProductRead,
+    status_code=status.HTTP_201_CREATED,
+)
 def create_product(
     data: ProductCreate, db: Annotated[Session, Depends(get_db)]
 ) -> Product:
@@ -86,7 +92,7 @@ def create_product(
     return product
 
 
-@router.get("", response_model=list[ProductRead])
+@router.get("", dependencies=[AUTHENTICATED], response_model=list[ProductRead])
 def list_products(
     db: Annotated[Session, Depends(get_db)],
     q: Annotated[str | None, Query(min_length=1, max_length=50)] = None,
@@ -112,7 +118,7 @@ def list_products(
 
 
 # Esta ruta no choca con /{product_id}: "ean/123" tiene una barra de más.
-@router.get("/ean/{ean}", response_model=ProductRead)
+@router.get("/ean/{ean}", dependencies=[AUTHENTICATED], response_model=ProductRead)
 def get_product_by_ean(
     ean: Annotated[str, Path(pattern=r"^[0-9]{13}$")],
     db: Annotated[Session, Depends(get_db)],
@@ -123,12 +129,12 @@ def get_product_by_ean(
     return product
 
 
-@router.get("/{product_id}", response_model=ProductRead)
+@router.get("/{product_id}", dependencies=[AUTHENTICATED], response_model=ProductRead)
 def get_product(product_id: int, db: Annotated[Session, Depends(get_db)]) -> Product:
     return get_product_or_404(db, product_id)
 
 
-@router.patch("/{product_id}", response_model=ProductRead)
+@router.patch("/{product_id}", dependencies=[ADMIN_ONLY], response_model=ProductRead)
 def update_product(
     product_id: int,
     data: ProductUpdate,
@@ -156,7 +162,9 @@ def update_product(
     return product
 
 
-@router.post("/{product_id}/deactivate", response_model=ProductRead)
+@router.post(
+    "/{product_id}/deactivate", dependencies=[ADMIN_ONLY], response_model=ProductRead
+)
 def deactivate_product(
     product_id: int, db: Annotated[Session, Depends(get_db)]
 ) -> Product:
@@ -168,7 +176,9 @@ def deactivate_product(
     return product
 
 
-@router.post("/{product_id}/activate", response_model=ProductRead)
+@router.post(
+    "/{product_id}/activate", dependencies=[ADMIN_ONLY], response_model=ProductRead
+)
 def activate_product(
     product_id: int, db: Annotated[Session, Depends(get_db)]
 ) -> Product:

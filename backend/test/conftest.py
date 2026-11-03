@@ -1,8 +1,15 @@
-from collections.abc import Iterator
+# ruff: noqa: E402
+import os
+
+# Antes de importar la app: Settings exige JWT_SECRET y los tests no deben
+# depender del .env de nadie.
+os.environ.setdefault("JWT_SECRET", "clave-solo-para-tests-" + "x" * 32)
+
+from collections.abc import Callable, Iterator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import Engine, create_engine
+from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
 
@@ -11,6 +18,13 @@ from backend.config import settings
 from backend.database.base import Base
 from backend.database.session import get_db
 from backend.main import app
+from backend.models.cash_session import CashSession
+from backend.models.user import User, UserRole
+from backend.security import create_access_token, hash_password
+
+TEST_PASSWORD = "contraseña-de-test-1"
+# Argon2 es lento a propósito: se calcula una vez para toda la sesión de tests.
+_TEST_PASSWORD_HASH = hash_password(TEST_PASSWORD)
 
 
 def _same_database(url_a: str, url_b: str) -> bool:
@@ -52,14 +66,89 @@ def db(engine: Engine) -> Iterator[Session]:
     connection.close()
 
 
+def bearer(user_id: int) -> dict[str, str]:
+    return {"Authorization": f"Bearer {create_access_token(user_id)}"}
+
+
 @pytest.fixture
-def client(db: Session) -> Iterator[TestClient]:
+def password() -> str:
+    """Contraseña de todos los usuarios creados con make_user."""
+    return TEST_PASSWORD
+
+
+@pytest.fixture
+def make_user(db: Session) -> Callable[..., User]:
+    def _make_user(
+        username: str, role: UserRole = UserRole.EMPLOYEE, active: bool = True
+    ) -> User:
+        user = User(
+            username=username,
+            password_hash=_TEST_PASSWORD_HASH,
+            role=role,
+            active=active,
+        )
+        db.add(user)
+        db.commit()
+        return user
+
+    return _make_user
+
+
+@pytest.fixture
+def admin_user(make_user: Callable[..., User]) -> User:
+    return make_user("admin", UserRole.ADMIN)
+
+
+@pytest.fixture
+def employee_user(make_user: Callable[..., User]) -> User:
+    return make_user("empleado", UserRole.EMPLOYEE)
+
+
+@pytest.fixture
+def client_factory(db: Session) -> Iterator[Callable[..., TestClient]]:
+    """Fábrica de clientes independientes que comparten la sesión de test."""
+
     def override_get_db() -> Iterator[Session]:
         yield db
 
     app.dependency_overrides[get_db] = override_get_db
-    yield TestClient(app)
+
+    def _client(user: User | None = None) -> TestClient:
+        headers = bearer(user.id) if user is not None else {}
+        return TestClient(app, headers=headers)
+
+    yield _client
     app.dependency_overrides.clear()
+
+
+@pytest.fixture
+def anon_client(client_factory: Callable[..., TestClient]) -> TestClient:
+    """Cliente sin credenciales."""
+    return client_factory()
+
+
+@pytest.fixture
+def open_cash(db: Session, admin_user: User) -> CashSession:
+    """Caja abierta con 100 € de fondo: sin ella no se puede vender ni devolver."""
+    session = CashSession(user_id=admin_user.id, opening_amount=100)
+    db.add(session)
+    db.commit()
+    return session
+
+
+@pytest.fixture
+def client(
+    client_factory: Callable[..., TestClient], admin_user: User, open_cash: CashSession
+) -> TestClient:
+    """Cliente administrador con la caja abierta (el caso por defecto de los tests)."""
+    return client_factory(admin_user)
+
+
+@pytest.fixture
+def employee_client(
+    client_factory: Callable[..., TestClient], employee_user: User
+) -> TestClient:
+    return client_factory(employee_user)
 
 
 @pytest.fixture
@@ -67,3 +156,36 @@ def category(client: TestClient) -> dict:
     response = client.post("/categories", json={"name": "Bebidas"})
     assert response.status_code == 201
     return response.json()
+
+
+@pytest.fixture
+def committed_client(engine: Engine) -> Iterator[TestClient]:
+    """Cliente con conexiones y commits reales (sin la transacción de aislamiento).
+
+    Hace falta para probar concurrencia: cada petición usa su propia sesión.
+    Al terminar se vacían las tablas a mano.
+    """
+
+    def override_get_db() -> Iterator[Session]:
+        with Session(engine) as session:
+            yield session
+
+    with Session(engine) as session:
+        admin = User(username="admin", password_hash="no-se-usa", role=UserRole.ADMIN)
+        session.add(admin)
+        session.commit()
+        session.add(CashSession(user_id=admin.id, opening_amount=100))
+        session.commit()
+        headers = {"Authorization": f"Bearer {create_access_token(admin.id)}"}
+
+    app.dependency_overrides[get_db] = override_get_db
+    yield TestClient(app, headers=headers)
+    app.dependency_overrides.clear()
+    with engine.begin() as connection:
+        connection.execute(
+            text(
+                "TRUNCATE return_items, returns, sale_items, payments, sales,"
+                " stock_movements, products, categories, cash_sessions, users"
+                " RESTART IDENTITY CASCADE"
+            )
+        )
