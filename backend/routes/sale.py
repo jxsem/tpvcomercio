@@ -9,6 +9,7 @@ from backend.database.session import get_db
 from backend.models.sale import Sale, SaleStatus
 from backend.schemas.sale_create import SaleCreate
 from backend.schemas.sale_read import SaleRead
+from backend.service.cash import CashError
 from backend.service.sale import (
     InsufficientPaymentError,
     InsufficientStockError,
@@ -41,7 +42,7 @@ def create_sale_route(
     ) as exc:
         db.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
-    except InsufficientStockError as exc:
+    except (InsufficientStockError, CashError) as exc:
         db.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except Exception:

@@ -9,6 +9,7 @@ from backend.models.sale_item import SaleItem
 from backend.models.sale_return import Return, ReturnItem
 from backend.models.stock_movement import StockMovement, StockMovementType
 from backend.schemas.return_create import ReturnCreate
+from backend.service.cash import lock_open_session_shared
 from backend.service.sale import line_subtotal
 
 
@@ -38,6 +39,7 @@ class ExceedsSoldQuantityError(ReturnError):
 
 def create_return(db: Session, data: ReturnCreate, user_id: int) -> Return:
     """Crea la devolución, sus líneas y los movimientos de stock. No hace commit."""
+    cash_session = lock_open_session_shared(db)
     sale = db.get(Sale, data.original_sale_id)
     if sale is None:
         raise SaleNotFoundError("Venta no encontrada")
@@ -81,7 +83,12 @@ def create_return(db: Session, data: ReturnCreate, user_id: int) -> Return:
         )
     }
 
-    ret = Return(original_sale_id=sale.id, user_id=user_id, method=data.method)
+    ret = Return(
+        original_sale_id=sale.id,
+        user_id=user_id,
+        cash_session_id=cash_session.id,
+        method=data.method,
+    )
     restock: dict[int, int] = {}
     for item in data.items:
         line = sale_items.get(item.sale_item_id)

@@ -10,6 +10,7 @@ from backend.models.sale import Sale
 from backend.models.sale_item import SaleItem
 from backend.models.stock_movement import StockMovement, StockMovementType
 from backend.schemas.sale_create import SaleCreate
+from backend.service.cash import lock_open_session_shared
 
 CENT = Decimal("0.01")
 
@@ -52,6 +53,10 @@ def create_sale(db: Session, data: SaleCreate, user_id: int | None = None) -> Sa
     No hace commit: quien llama decide cuándo confirmar o deshacer, de modo que
     o se guarda todo (venta + pago + stock) o no se guarda nada.
     """
+    # Sin caja abierta no se vende; el bloqueo compartido impide que el cierre de
+    # caja se cuele entre esta venta y su commit.
+    cash_session = lock_open_session_shared(db)
+
     # Se bloquean las filas de los productos hasta el final de la transacción:
     # dos ventas simultáneas del mismo producto se ejecutan una detrás de otra y
     # la segunda ve el stock ya descontado. El orden por id evita deadlocks
@@ -85,7 +90,7 @@ def create_sale(db: Session, data: SaleCreate, user_id: int | None = None) -> Sa
             raise InsufficientStockError(product_id)
 
     # Los importes salen siempre de los precios guardados, nunca del cliente.
-    sale = Sale(user_id=user_id, total=Decimal("0.00"))
+    sale = Sale(user_id=user_id, cash_session_id=cash_session.id, total=Decimal("0.00"))
     for item in data.items:
         product = products[item.product_id]
         sale.items.append(

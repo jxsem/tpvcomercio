@@ -9,6 +9,7 @@ from backend.database.session import get_db
 from backend.models.sale_return import Return
 from backend.schemas.return_create import ReturnCreate
 from backend.schemas.return_read import ReturnRead
+from backend.service.cash import CashError
 from backend.service.return_ import (
     ExceedsSoldQuantityError,
     InvalidReturnItemError,
@@ -34,7 +35,7 @@ def create_return_route(
     except InvalidReturnItemError as exc:
         db.rollback()
         raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
-    except (ExceedsSoldQuantityError, ReturnNotAllowedError) as exc:
+    except (ExceedsSoldQuantityError, ReturnNotAllowedError, CashError) as exc:
         db.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except ReturnError as exc:  # cualquier otro error de negocio
