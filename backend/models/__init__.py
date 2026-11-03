@@ -4,6 +4,7 @@ from backend.models.product import Product
 from backend.models.sale import Sale, SaleStatus
 from backend.models.sale_item import SaleItem
 from backend.models.stock_movement import StockMovement, StockMovementType
+from backend.models.user import User, UserRole
 
 __all__ = [
     "Category",
@@ -15,4 +16,6 @@ __all__ = [
     "SaleStatus",
     "StockMovement",
     "StockMovementType",
+    "User",
+    "UserRole",
 ]

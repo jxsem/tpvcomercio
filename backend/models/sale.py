@@ -3,7 +3,7 @@ from decimal import Decimal
 from enum import StrEnum
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, DateTime, Numeric, String, func
+from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Numeric, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from backend.database.base import Base
@@ -27,8 +27,9 @@ class Sale(Base):
     __tablename__ = "sales"
 
     id: Mapped[int] = mapped_column(primary_key=True)
-    # Sin FK todavía: la tabla users llega con la fase de autenticación.
-    user_id: Mapped[int | None] = mapped_column()
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
     total: Mapped[Decimal] = mapped_column(Numeric(precision=10, scale=2))
     status: Mapped[str] = mapped_column(
         String(20), server_default=SaleStatus.COMPLETED.value
