@@ -2,7 +2,14 @@ from datetime import datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import CheckConstraint, DateTime, ForeignKey, Numeric, String, func
+from sqlalchemy import (
+    CheckConstraint,
+    DateTime,
+    ForeignKey,
+    Numeric,
+    String,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql.expression import false, true
 
@@ -19,7 +26,7 @@ class Product(Base):
     ean: Mapped[str | None] = mapped_column(String(13), unique=True)
     name: Mapped[str] = mapped_column(String(50))
     category_id: Mapped[int] = mapped_column(
-        ForeignKey("categories.id", ondelete="CASCADE")
+        ForeignKey("categories.id", ondelete="RESTRICT"), index=True
     )
     price: Mapped[Decimal] = mapped_column(Numeric(precision=10, scale=2))
     tax_rate: Mapped[Decimal] = mapped_column(Numeric(precision=4, scale=2))
