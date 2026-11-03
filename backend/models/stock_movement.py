@@ -32,8 +32,9 @@ class StockMovement(Base):
     quantity: Mapped[int] = mapped_column()
     reason: Mapped[str | None] = mapped_column(String(255))
     reference_id: Mapped[int | None] = mapped_column()
-    # Sin FK todavía: la tabla users llega con la fase de autenticación.
-    user_id: Mapped[int | None] = mapped_column()
+    user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="RESTRICT"), index=True
+    )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
