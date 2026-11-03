@@ -8,6 +8,7 @@ from backend.routes.category import router as category_router
 from backend.routes.product import router as product_router
 from backend.routes.return_ import router as return_router
 from backend.routes.sale import router as sale_router
+from backend.routes.stock import router as stock_router
 from backend.routes.user import router as user_router
 
 app = FastAPI()
@@ -26,6 +27,7 @@ app.include_router(category_router)
 app.include_router(product_router)
 app.include_router(sale_router)
 app.include_router(return_router)
+app.include_router(stock_router)
 
 
 @app.get("/health")
