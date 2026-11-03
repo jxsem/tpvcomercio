@@ -11,6 +11,8 @@ from backend.database.session import get_db
 from backend.main import app
 from backend.models.sale import Sale
 from backend.models.stock_movement import StockMovement, StockMovementType
+from backend.models.user import User, UserRole
+from backend.security import create_access_token
 
 
 def create_product(client: TestClient, category: dict, **overrides: object) -> dict:
@@ -382,14 +384,20 @@ def committed_client(engine: Engine) -> Iterator[TestClient]:
         with Session(engine) as session:
             yield session
 
+    with Session(engine) as session:
+        admin = User(username="admin", password_hash="no-se-usa", role=UserRole.ADMIN)
+        session.add(admin)
+        session.commit()
+        headers = {"Authorization": f"Bearer {create_access_token(admin.id)}"}
+
     app.dependency_overrides[get_db] = override_get_db
-    yield TestClient(app)
+    yield TestClient(app, headers=headers)
     app.dependency_overrides.clear()
     with engine.begin() as connection:
         connection.execute(
             text(
                 "TRUNCATE sale_items, payments, sales, stock_movements, products,"
-                " categories RESTART IDENTITY CASCADE"
+                " categories, users RESTART IDENTITY CASCADE"
             )
         )
 
@@ -403,7 +411,7 @@ def test_two_simultaneous_sales_cannot_oversell_the_same_stock(
 
     def sell_eight() -> int:
         # Un cliente por hilo; la barrera hace que ambas ventas arranquen a la vez.
-        client = TestClient(app)
+        client = TestClient(app, headers=committed_client.headers)
         barrier.wait()
         return client.post("/sales", json=card((cola["id"], 8))).status_code
 
