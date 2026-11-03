@@ -18,6 +18,7 @@ from backend.config import settings
 from backend.database.base import Base
 from backend.database.session import get_db
 from backend.main import app
+from backend.models.cash_session import CashSession
 from backend.models.user import User, UserRole
 from backend.security import create_access_token, hash_password
 
@@ -127,8 +128,19 @@ def anon_client(client_factory: Callable[..., TestClient]) -> TestClient:
 
 
 @pytest.fixture
-def client(client_factory: Callable[..., TestClient], admin_user: User) -> TestClient:
-    """Cliente autenticado como administrador (el caso por defecto de los tests)."""
+def open_cash(db: Session, admin_user: User) -> CashSession:
+    """Caja abierta con 100 € de fondo: sin ella no se puede vender ni devolver."""
+    session = CashSession(user_id=admin_user.id, opening_amount=100)
+    db.add(session)
+    db.commit()
+    return session
+
+
+@pytest.fixture
+def client(
+    client_factory: Callable[..., TestClient], admin_user: User, open_cash: CashSession
+) -> TestClient:
+    """Cliente administrador con la caja abierta (el caso por defecto de los tests)."""
     return client_factory(admin_user)
 
 
@@ -162,6 +174,8 @@ def committed_client(engine: Engine) -> Iterator[TestClient]:
         admin = User(username="admin", password_hash="no-se-usa", role=UserRole.ADMIN)
         session.add(admin)
         session.commit()
+        session.add(CashSession(user_id=admin.id, opening_amount=100))
+        session.commit()
         headers = {"Authorization": f"Bearer {create_access_token(admin.id)}"}
 
     app.dependency_overrides[get_db] = override_get_db
@@ -170,7 +184,8 @@ def committed_client(engine: Engine) -> Iterator[TestClient]:
     with engine.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE sale_items, payments, sales, stock_movements, products,"
-                " categories, users RESTART IDENTITY CASCADE"
+                "TRUNCATE return_items, returns, sale_items, payments, sales,"
+                " stock_movements, products, categories, cash_sessions, users"
+                " RESTART IDENTITY CASCADE"
             )
         )

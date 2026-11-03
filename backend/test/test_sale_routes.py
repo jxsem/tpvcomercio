@@ -10,7 +10,6 @@ from backend.main import app
 from backend.models.sale import Sale
 from backend.models.stock_movement import StockMovement, StockMovementType
 
-
 # Muchos hilos a la vez: con pocos, la ventana de la carrera es tan pequeña que
 # sin el bloqueo el test a veces pasaba igual.
 WORKERS = 6
