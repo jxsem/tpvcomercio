@@ -5,14 +5,16 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from backend.auth import ADMIN_ONLY
+from backend.auth import ADMIN_ONLY, AdminUser
 from backend.database.errors import unique_violation_constraint
 from backend.database.session import get_db
+from backend.models.audit_log import AuditAction
 from backend.models.user import User, UserRole
 from backend.schemas.user_create import UserCreate
 from backend.schemas.user_read import UserRead
 from backend.schemas.user_update import UserUpdate
 from backend.security import hash_password
+from backend.service.audit import log_action
 
 # Todo el router es solo para administradores.
 router = APIRouter(prefix="/users", tags=["users"], dependencies=[ADMIN_ONLY])
@@ -28,7 +30,9 @@ def get_user_or_404(db: Session, user_id: int) -> User:
 
 
 @router.post("", response_model=UserRead, status_code=status.HTTP_201_CREATED)
-def create_user(data: UserCreate, db: Annotated[Session, Depends(get_db)]) -> User:
+def create_user(
+    data: UserCreate, db: Annotated[Session, Depends(get_db)], admin: AdminUser
+) -> User:
     user = User(
         username=data.username,
         password_hash=hash_password(data.password),
@@ -36,6 +40,16 @@ def create_user(data: UserCreate, db: Annotated[Session, Depends(get_db)]) -> Us
     )
     db.add(user)
     try:
+        db.flush()
+        # Nunca se audita la contraseña: solo quién se creó y con qué rol.
+        log_action(
+            db,
+            admin.id,
+            AuditAction.USER_CREATED,
+            "user",
+            user.id,
+            {"username": user.username, "role": user.role},
+        )
         db.commit()
     except IntegrityError as exc:
         db.rollback()
@@ -65,7 +79,10 @@ def get_user(user_id: int, db: Annotated[Session, Depends(get_db)]) -> User:
 
 @router.patch("/{user_id}", response_model=UserRead)
 def update_user(
-    user_id: int, data: UserUpdate, db: Annotated[Session, Depends(get_db)]
+    user_id: int,
+    data: UserUpdate,
+    db: Annotated[Session, Depends(get_db)],
+    admin: AdminUser,
 ) -> User:
     user = get_user_or_404(db, user_id)
     changes = data.model_dump(exclude_unset=True)
@@ -92,10 +109,20 @@ def update_user(
                 "No se puede dejar el sistema sin administradores activos",
             )
 
-    if "password" in changes:
+    password_changed = "password" in changes
+    if password_changed:
         user.password_hash = hash_password(changes.pop("password"))
     for field, value in changes.items():
         setattr(user, field, value)
+    log_action(
+        db,
+        admin.id,
+        AuditAction.USER_UPDATED,
+        "user",
+        user.id,
+        # Solo se indica QUE se cambió la contraseña, nunca su valor.
+        {"fields": sorted(changes), "password_changed": password_changed},
+    )
     db.commit()
     db.refresh(user)
     return user

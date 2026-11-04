@@ -1,3 +1,4 @@
+from backend.models.audit_log import AuditAction, AuditLog
 from backend.models.cash_session import CashSession, CashSessionStatus
 from backend.models.category import Category
 from backend.models.payment import Payment, PaymentMethod
@@ -9,6 +10,8 @@ from backend.models.stock_movement import StockMovement, StockMovementType
 from backend.models.user import User, UserRole
 
 __all__ = [
+    "AuditAction",
+    "AuditLog",
     "CashSession",
     "CashSessionStatus",
     "Category",

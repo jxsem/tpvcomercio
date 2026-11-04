@@ -184,8 +184,8 @@ def committed_client(engine: Engine) -> Iterator[TestClient]:
     with engine.begin() as connection:
         connection.execute(
             text(
-                "TRUNCATE return_items, returns, sale_items, payments, sales,"
-                " stock_movements, products, categories, cash_sessions, users"
+                "TRUNCATE audit_logs, return_items, returns, sale_items, payments,"
+                " sales, stock_movements, products, categories, cash_sessions, users"
                 " RESTART IDENTITY CASCADE"
             )
         )

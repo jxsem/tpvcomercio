@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -6,9 +7,11 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.auth import ADMIN_ONLY, AUTHENTICATED, CurrentUser
 from backend.database.session import get_db
+from backend.models.audit_log import AuditAction
 from backend.models.sale_return import Return
 from backend.schemas.return_create import ReturnCreate
 from backend.schemas.return_read import ReturnRead
+from backend.service.audit import log_action
 from backend.service.cash import CashError
 from backend.service.return_ import (
     ExceedsSoldQuantityError,
@@ -19,6 +22,8 @@ from backend.service.return_ import (
     create_return,
 )
 
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/returns", tags=["returns"])
 
 
@@ -28,6 +33,14 @@ def create_return_route(
 ) -> Return:
     try:
         ret = create_return(db, data, user_id=user.id)
+        log_action(
+            db,
+            user.id,
+            AuditAction.RETURN_CREATED,
+            "return",
+            ret.id,
+            {"original_sale_id": ret.original_sale_id, "total": str(ret.total)},
+        )
         db.commit()
     except SaleNotFoundError as exc:
         db.rollback()
@@ -42,6 +55,7 @@ def create_return_route(
         db.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except Exception:
+        logger.exception("Return creation failed user_id=%s", user.id)
         db.rollback()
         raise
     db.refresh(ret)
