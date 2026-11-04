@@ -18,6 +18,8 @@ ADMIN_ONLY = [
     ("GET", "/sales"),
     ("GET", "/returns"),
     ("GET", "/cash/daily-summary"),
+    ("POST", "/stock/adjustments"),
+    ("GET", "/audit-logs"),
     ("GET", "/users"),
     ("POST", "/users"),
     ("GET", "/users/1"),

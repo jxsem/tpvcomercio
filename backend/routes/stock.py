@@ -1,15 +1,28 @@
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from backend.auth import AUTHENTICATED
+from backend.auth import ADMIN_ONLY, AUTHENTICATED, AdminUser
 from backend.database.session import get_db
+from backend.models.audit_log import AuditAction
 from backend.models.product import Product
 from backend.models.stock_movement import StockMovement, StockMovementType
+from backend.schemas.stock_adjustment_create import StockAdjustmentCreate
 from backend.schemas.stock_movement_read import StockMovementRead
 from backend.schemas.stock_read import StockRead
+from backend.service.audit import log_action
+from backend.service.stock import (
+    NegativeStockError,
+    ProductNotFoundError,
+    StockError,
+    WeightedProductError,
+    adjust_stock,
+)
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/stock", tags=["stock"])
 
@@ -31,6 +44,46 @@ def list_stock(
     if max_stock is not None:
         stmt = stmt.where(Product.stock <= max_stock)
     return list(db.scalars(stmt.limit(limit).offset(offset)))
+
+
+@router.post(
+    "/adjustments",
+    dependencies=[ADMIN_ONLY],
+    response_model=StockMovementRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_adjustment(
+    data: StockAdjustmentCreate,
+    db: Annotated[Session, Depends(get_db)],
+    admin: AdminUser,
+) -> StockMovement:
+    try:
+        movement = adjust_stock(db, data, user_id=admin.id)
+        # Ajuste y auditoría se confirman juntos o no se confirma ninguno.
+        log_action(
+            db,
+            admin.id,
+            AuditAction.STOCK_ADJUSTED,
+            "product",
+            data.product_id,
+            {"type": data.type, "delta": data.delta, "reason": data.reason},
+        )
+        db.commit()
+    except ProductNotFoundError as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_404_NOT_FOUND, str(exc)) from exc
+    except (WeightedProductError, NegativeStockError) as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
+    except StockError as exc:
+        db.rollback()
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_CONTENT, str(exc)) from exc
+    except Exception:
+        logger.exception("Stock adjustment failed user_id=%s", admin.id)
+        db.rollback()
+        raise
+    db.refresh(movement)
+    return movement
 
 
 # IMPORTANTE: va antes que /{product_id}. FastAPI usa la primera ruta cuya forma

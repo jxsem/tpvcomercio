@@ -5,15 +5,17 @@ from sqlalchemy import or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from backend.auth import ADMIN_ONLY, AUTHENTICATED
+from backend.auth import ADMIN_ONLY, AUTHENTICATED, AdminUser
 from backend.database.errors import unique_violation_constraint
 from backend.database.session import get_db
+from backend.models.audit_log import AuditAction
 from backend.models.category import Category
 from backend.models.product import Product
 from backend.models.stock_movement import StockMovement, StockMovementType
 from backend.schemas.product_create import ProductCreate
 from backend.schemas.product_read import ProductRead
 from backend.schemas.product_update import ProductUpdate
+from backend.service.audit import log_action, to_json_safe
 
 router = APIRouter(prefix="/products", tags=["products"])
 
@@ -61,7 +63,7 @@ def escape_like(text: str) -> str:
     status_code=status.HTTP_201_CREATED,
 )
 def create_product(
-    data: ProductCreate, db: Annotated[Session, Depends(get_db)]
+    data: ProductCreate, db: Annotated[Session, Depends(get_db)], admin: AdminUser
 ) -> Product:
     require_active_category(db, data.category_id)
 
@@ -83,7 +85,15 @@ def create_product(
                     reason="Stock inicial",
                 )
             )
-        # Producto y movimiento se confirman juntos o no se confirma ninguno.
+        log_action(
+            db,
+            admin.id,
+            AuditAction.PRODUCT_CREATED,
+            "product",
+            product.id,
+            data.model_dump(mode="json"),
+        )
+        # Producto, movimiento y auditoría se confirman juntos o ninguno.
         db.commit()
     except IntegrityError as exc:
         raise_for_integrity_error(db, exc)
@@ -139,6 +149,7 @@ def update_product(
     product_id: int,
     data: ProductUpdate,
     db: Annotated[Session, Depends(get_db)],
+    admin: AdminUser,
 ) -> Product:
     product = get_product_or_404(db, product_id)
     changes = data.model_dump(exclude_unset=True)
@@ -150,10 +161,24 @@ def update_product(
             status.HTTP_422_UNPROCESSABLE_CONTENT, "Un producto pesable no lleva EAN"
         )
 
+    # Se guarda el valor anterior de cada campo: así la auditoría explica el cambio
+    # (p. ej. el precio antiguo), no solo que hubo uno.
+    before = {field: getattr(product, field) for field in changes}
     for field, value in changes.items():
         setattr(product, field, value)
 
     try:
+        log_action(
+            db,
+            admin.id,
+            AuditAction.PRODUCT_UPDATED,
+            "product",
+            product.id,
+            {
+                "before": to_json_safe(before),
+                "after": to_json_safe(changes),
+            },
+        )
         db.commit()
     except IntegrityError as exc:
         raise_for_integrity_error(db, exc)
@@ -166,11 +191,12 @@ def update_product(
     "/{product_id}/deactivate", dependencies=[ADMIN_ONLY], response_model=ProductRead
 )
 def deactivate_product(
-    product_id: int, db: Annotated[Session, Depends(get_db)]
+    product_id: int, db: Annotated[Session, Depends(get_db)], admin: AdminUser
 ) -> Product:
     # Nunca se borra un producto: puede estar en ventas históricas.
     product = get_product_or_404(db, product_id)
     product.active = False
+    log_action(db, admin.id, AuditAction.PRODUCT_DEACTIVATED, "product", product.id)
     db.commit()
     db.refresh(product)
     return product
@@ -180,10 +206,11 @@ def deactivate_product(
     "/{product_id}/activate", dependencies=[ADMIN_ONLY], response_model=ProductRead
 )
 def activate_product(
-    product_id: int, db: Annotated[Session, Depends(get_db)]
+    product_id: int, db: Annotated[Session, Depends(get_db)], admin: AdminUser
 ) -> Product:
     product = get_product_or_404(db, product_id)
     product.active = True
+    log_action(db, admin.id, AuditAction.PRODUCT_ACTIVATED, "product", product.id)
     db.commit()
     db.refresh(product)
     return product

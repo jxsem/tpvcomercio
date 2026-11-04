@@ -1,3 +1,4 @@
+import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -6,9 +7,11 @@ from sqlalchemy.orm import Session, selectinload
 
 from backend.auth import ADMIN_ONLY, AUTHENTICATED, CurrentUser
 from backend.database.session import get_db
+from backend.models.audit_log import AuditAction
 from backend.models.sale import Sale, SaleStatus
 from backend.schemas.sale_create import SaleCreate
 from backend.schemas.sale_read import SaleRead
+from backend.service.audit import log_action
 from backend.service.cash import CashError
 from backend.service.sale import (
     InsufficientPaymentError,
@@ -17,6 +20,8 @@ from backend.service.sale import (
     ProductNotAvailableError,
     create_sale,
 )
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/sales", tags=["sales"])
 
@@ -33,7 +38,15 @@ def create_sale_route(
 ) -> Sale:
     try:
         sale = create_sale(db, data, user_id=user.id)
-        # Venta, líneas, pago y stock se confirman juntos.
+        log_action(
+            db,
+            user.id,
+            AuditAction.SALE_CREATED,
+            "sale",
+            sale.id,
+            {"total": str(sale.total), "method": sale.payment.method},
+        )
+        # Venta, líneas, pago, stock y auditoría se confirman juntos.
         db.commit()
     except (
         ProductNotAvailableError,
@@ -46,6 +59,7 @@ def create_sale_route(
         db.rollback()
         raise HTTPException(status.HTTP_409_CONFLICT, str(exc)) from exc
     except Exception:
+        logger.exception("Sale creation failed user_id=%s", user.id)
         # Cualquier fallo inesperado deja la base de datos como estaba.
         db.rollback()
         raise
