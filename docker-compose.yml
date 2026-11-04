@@ -1,0 +1,38 @@
+services:
+  postgres:
+    image: postgres:18
+    environment:
+      # Usuario de arranque (superusuario). La app NO lo usa: ver init-app-user.sh.
+      POSTGRES_USER: tpv_admin
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?define POSTGRES_ADMIN_PASSWORD en .env}
+      POSTGRES_DB: tpvcomercio
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?define APP_DB_PASSWORD en .env}
+    volumes:
+      - pgdata:/var/lib/postgresql
+      - ./docker/postgres/init-app-user.sh:/docker-entrypoint-initdb.d/init-app-user.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tpv_admin -d tpvcomercio"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    # Solo accesible desde esta máquina, nunca desde la red local de la tienda.
+    ports:
+      - "127.0.0.1:5432:5432"
+
+  backend:
+    build: .
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+psycopg://tpv_app:${APP_DB_PASSWORD}@postgres:5432/tpvcomercio
+      JWT_SECRET: ${JWT_SECRET:?define JWT_SECRET en .env}
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost:5173"]}
+    # Las migraciones se aplican antes de arrancar la API.
+    command: sh -c "alembic upgrade head && uvicorn backend.main:app --host 0.0.0.0 --port 8000"
+    ports:
+      - "127.0.0.1:8000:8000"
+    restart: unless-stopped
+
+volumes:
+  pgdata:
