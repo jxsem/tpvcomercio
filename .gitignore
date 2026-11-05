@@ -47,3 +47,5 @@ tempCodeRunnerFile.py
 
 # Cachés de herramientas (ruff, pytest)
 .cache/
+
+experimento.py
